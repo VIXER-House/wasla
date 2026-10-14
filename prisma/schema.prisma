@@ -1,0 +1,162 @@
+// Wasla platform — accounts, API keys, credits and usage.
+
+generator client {
+  provider        = "prisma-client-js"
+  // Rust-free Prisma Client (TypeScript query compiler + pg driver adapter): no native engine on Vercel.
+  previewFeatures = ["driverAdapters", "queryCompiler"]
+  engineType      = "client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Plan {
+  FREE
+  STARTER
+  GROWTH
+  BUSINESS
+}
+
+enum EmailTokenType {
+  VERIFY_EMAIL
+  RESET_PASSWORD
+}
+
+enum KeyMode {
+  LIVE
+  TEST
+}
+
+enum UsageKind {
+  MESSAGE_SENT
+  MESSAGE_RECEIVED
+  AI_REQUEST
+}
+
+enum OrderStatus {
+  PENDING
+  PAID
+  CANCELLED
+}
+
+model User {
+  id              String    @id @default(cuid())
+  email           String    @unique
+  name            String
+  passwordHash    String
+  emailVerifiedAt DateTime?
+  createdAt       DateTime  @default(now())
+
+  account     Account?
+  emailTokens EmailToken[]
+}
+
+/// Single-use email links (confirm address, reset password). Only the SHA-256 of the token is stored.
+model EmailToken {
+  id        String         @id @default(cuid())
+  userId    String
+  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      EmailTokenType
+  tokenHash String         @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime       @default(now())
+
+  @@index([userId, type])
+}
+
+/// The billing workspace. One per user for now (teams later).
+model Account {
+  id            String    @id @default(cuid())
+  ownerId       String    @unique
+  owner         User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  name          String
+  plan          Plan      @default(FREE)
+  planRenewsAt  DateTime?
+  /// Current balance; every change is mirrored in CreditTransaction
+  credits       Int       @default(0)
+
+  // WhatsApp Cloud API connection (secrets encrypted with ENCRYPTION_KEY)
+  waPhoneNumberId String?
+  waAccessTokenEnc String?
+  waAppSecretEnc   String?
+  waVerifyToken    String?
+
+  /// Where we forward incoming WhatsApp messages (signed with webhookSecret)
+  webhookUrl    String?
+  webhookSecret String?
+
+  createdAt DateTime @default(now())
+
+  apiKeys      ApiKey[]
+  usage        UsageEvent[]
+  transactions CreditTransaction[]
+  orders       Order[]
+}
+
+model ApiKey {
+  id         String    @id @default(cuid())
+  accountId  String
+  account    Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  name       String
+  mode       KeyMode   @default(LIVE)
+  /// First characters of the key, shown in the dashboard ("wk_live_a1b2c3…")
+  prefix     String
+  /// SHA-256 of the full key — the key itself is shown once and never stored
+  hash       String    @unique
+  lastUsedAt DateTime?
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
+
+  usage UsageEvent[]
+
+  @@index([accountId])
+}
+
+model UsageEvent {
+  id        String    @id @default(cuid())
+  accountId String
+  account   Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  apiKeyId  String?
+  apiKey    ApiKey?   @relation(fields: [apiKeyId], references: [id], onDelete: SetNull)
+  kind      UsageKind
+  mode      KeyMode   @default(LIVE)
+  credits   Int       @default(0)
+  tokensIn  Int       @default(0)
+  tokensOut Int       @default(0)
+  ok        Boolean   @default(true)
+  detail    String?
+  createdAt DateTime  @default(now())
+
+  @@index([accountId, createdAt])
+}
+
+model CreditTransaction {
+  id           String   @id @default(cuid())
+  accountId    String
+  account      Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  /// + top-up / plan grant, − usage
+  amount       Int
+  balanceAfter Int
+  reason       String
+  createdAt    DateTime @default(now())
+
+  @@index([accountId, createdAt])
+}
+
+model Order {
+  id         String      @id @default(cuid())
+  accountId  String
+  account    Account     @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  item       String
+  plan       Plan?
+  credits    Int         @default(0)
+  amountEgp  Int
+  status     OrderStatus @default(PENDING)
+  createdAt  DateTime    @default(now())
+  paidAt     DateTime?
+
+  @@index([accountId, createdAt])
+}
