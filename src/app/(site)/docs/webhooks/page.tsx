@@ -41,7 +41,7 @@ X-Wasla-Signature: sha256=5d0c1b…
         rows={[
           ["messages[].type", "string", <><code>text</code>, <code>image</code>, <code>audio</code>, <code>video</code> or <code>document</code>. Locations and button taps arrive as <code>text</code>.</>],
           ["messages[].replyId", "string", "Id of the reply button or list row the customer tapped."],
-          ["messages[].media", "object", <>For media: <code>{`{ id, mimeType, caption, fileName }`}</code>.</>],
+          ["messages[].media", "object", <>For media: <code>{`{ id, mimeType, caption, fileName }`}</code>. Download the file with <code>GET /api/v1/media/:id</code> (your API key, free).</>],
           ["statuses[].status", "string", <><code>sent</code>, <code>delivered</code>, <code>read</code> or <code>failed</code> (with <code>error</code>).</>],
         ]}
       />

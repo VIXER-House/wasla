@@ -22,6 +22,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ acc
   if (!account) return new NextResponse("Not found", { status: 404 });
   const raw = await req.text();
   if (account.waAppSecretEnc && !verifyMetaSignature(raw, req.headers.get("x-hub-signature-256"), decrypt(account.waAppSecretEnc))) {
+    // Make the problem visible in the customer's Usage page instead of failing silently
+    await recordUsage({ accountId: account.id, kind: "MESSAGE_RECEIVED", mode: "LIVE", ok: false, detail: "Webhook from Meta rejected: signature doesn't match the App secret saved in Dashboard → WhatsApp" });
     return new NextResponse("Bad signature", { status: 403 });
   }
   let payload: unknown;
