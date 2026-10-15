@@ -106,3 +106,23 @@ export function sendPasswordResetEmail(to: string, link: string) {
     link,
   );
 }
+
+/** Tell the admins a customer placed an order that needs activating. Best effort. */
+export async function sendAdminOrderEmail(order: { item: string; amountEgp: number; customerEmail: string }, link: string) {
+  const { db } = await import("./db");
+  const admins = (await db.user.findMany({ where: { isAdmin: true }, select: { email: true } })).map((u) => u.email);
+  for (const to of admins) {
+    await send(
+      to,
+      `New order: ${order.item} — ${order.customerEmail}`,
+      layout(
+        "New order to activate",
+        `<strong>${order.customerEmail}</strong> ordered <strong>${order.item}</strong> (${order.amountEgp.toLocaleString("en-US")} EGP + VAT). Contact them to collect payment, then mark the order as paid.`,
+        { label: "Open orders", url: link },
+        "You get this because you are an admin.",
+      ),
+      `New order: ${order.item} (${order.amountEgp} EGP) from ${order.customerEmail}. ${link}`,
+      link,
+    ).catch(() => null);
+  }
+}

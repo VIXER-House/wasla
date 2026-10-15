@@ -2,7 +2,8 @@
 
 import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/auth";
-import { getConfig } from "@/lib/config";
+import { appUrl, getConfig } from "@/lib/config";
+import { sendAdminOrderEmail } from "@/lib/email";
 import { db } from "@/lib/db";
 import { createOrder, fulfilOrder, resolveItem } from "@/server/services/checkout.service";
 
@@ -16,6 +17,7 @@ export async function placeOrderAction(form: FormData) {
     await fulfilOrder(order.id);
     redirect(`/checkout/done?order=${order.id}`);
   }
+  await sendAdminOrderEmail({ item: order.item, amountEgp: order.amountEgp, customerEmail: user.email }, appUrl("/admin/orders"));
   redirect(`/checkout/done?order=${order.id}`);
 }
 

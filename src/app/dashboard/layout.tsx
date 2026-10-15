@@ -1,6 +1,6 @@
 import Link from "next/link";
-import { Coins, LogOut } from "lucide-react";
-import { requireUser } from "@/lib/auth";
+import { Coins, LogOut, ShieldCheck } from "lucide-react";
+import { isAdmin, requireUser } from "@/lib/auth";
 import { PLAN_BY_ID } from "@/lib/plans";
 import { formatNumber } from "@/lib/utils";
 import { Logo } from "@/components/logo";
@@ -13,6 +13,7 @@ export const dynamic = "force-dynamic";
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const user = await requireUser();
   const a = user.account;
+  const admin = await isAdmin(user);
   return (
     <div className="min-h-screen bg-ink-50/60">
       <header className="sticky top-0 z-30 border-b border-ink-200 bg-white">
@@ -24,6 +25,11 @@ export default async function DashboardLayout({ children }: { children: React.Re
               <span className="font-semibold num">{formatNumber(a.credits)}</span>
               <span className="text-ink-500">credits</span>
             </Link>
+            {admin && (
+              <Link href="/admin" className="flex items-center gap-1 rounded-full bg-ink-900 px-2.5 py-1 text-xs font-medium text-white hover:bg-ink-800">
+                <ShieldCheck className="h-3.5 w-3.5" /> Admin
+              </Link>
+            )}
             <Badge tone={a.plan === "FREE" ? "neutral" : "green"}>{PLAN_BY_ID[a.plan].name}</Badge>
             <span className="hidden text-sm text-ink-600 md:inline">{user.email}</span>
             <form action={logoutAction}>
@@ -42,7 +48,14 @@ export default async function DashboardLayout({ children }: { children: React.Re
           <DashboardNav />
         </aside>
         <main className="min-w-0 flex-1 p-4 lg:p-8">
-          <div className="mx-auto max-w-6xl">{children}</div>
+          <div className="mx-auto max-w-6xl">
+            {a.blockedAt && (
+              <div className="mb-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+                Your account is suspended, so API calls are refused. Contact support to restore access.
+              </div>
+            )}
+            {children}
+          </div>
         </main>
       </div>
     </div>

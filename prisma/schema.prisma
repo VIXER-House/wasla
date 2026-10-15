@@ -47,6 +47,8 @@ model User {
   name            String
   passwordHash    String
   emailVerifiedAt DateTime?
+  /// Admins see /admin. The first confirmed user becomes admin automatically; admins can promote others.
+  isAdmin         Boolean   @default(false)
   createdAt       DateTime  @default(now())
 
   account     Account?
@@ -87,6 +89,10 @@ model Account {
   /// Where we forward incoming WhatsApp messages (signed with webhookSecret)
   webhookUrl    String?
   webhookSecret String?
+
+  /// Set by an admin: API calls are refused while blocked
+  blockedAt     DateTime?
+  blockedReason String?
 
   createdAt DateTime @default(now())
 
@@ -159,4 +165,17 @@ model Order {
   paidAt     DateTime?
 
   @@index([accountId, createdAt])
+}
+
+/// What admins did (credits, plans, orders, blocking) — for accountability.
+model AdminLog {
+  id         String   @id @default(cuid())
+  adminEmail String
+  action     String
+  accountId  String?
+  detail     String
+  createdAt  DateTime @default(now())
+
+  @@index([accountId, createdAt])
+  @@index([createdAt])
 }

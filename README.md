@@ -11,6 +11,12 @@ Website + developer platform for the Wasla WhatsApp & AI API:
   - Credits & billing: balance, history, plans, top-ups.
   - WhatsApp connection: Meta Cloud API number, encrypted token, webhook forwarding.
   - Settings.
+- **Admin area** (`/admin`). The first person to sign up and confirm their email becomes admin automatically; admins can make other users admins from a customer's page. It has:
+  - an overview: customers, paid plans, revenue, usage;
+  - pending orders, with mark-paid or cancel (admins are emailed when an order is placed);
+  - customers: search, adjust credits, change plan, block or unblock, revoke keys.
+
+  Every admin action is logged.
 - **Public API** (`/api/v1`):
   - `GET /account`
   - `POST /messages`

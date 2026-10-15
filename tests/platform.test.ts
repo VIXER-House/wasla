@@ -185,3 +185,67 @@ describe.runIf(process.env.DATABASE_URL)("platform", () => {
     expect((await call(getAccount, testKey, undefined, "GET")).status).toBe(401);
   });
 });
+
+describe.runIf(process.env.DATABASE_URL)("admin", () => {
+  it("credits, plan, block and order actions — logged", async () => {
+    if (!dbUp) return;
+    const admin = await import("@/server/services/admin.service");
+    const u = await db.user.create({ data: { email: `adm+${Date.now()}@example.com`, name: "Adm Test", passwordHash: "x", emailVerifiedAt: new Date(), account: { create: { name: "W" } } }, include: { account: true } });
+    const id = u.account!.id;
+    try {
+      expect((await admin.adjustCredits("boss@x.com", id, 500, "goodwill")).ok).toBe(true);
+      expect((await admin.adjustCredits("boss@x.com", id, -600, "too much")).ok).toBe(false);
+      expect((await admin.adjustCredits("boss@x.com", id, -100, "fix")).ok).toBe(true);
+      expect((await db.account.findUniqueOrThrow({ where: { id } })).credits).toBe(400);
+
+      await admin.setPlan("boss@x.com", id, "GROWTH", true);
+      const a = await db.account.findUniqueOrThrow({ where: { id } });
+      expect(a.plan).toBe("GROWTH");
+      expect(a.credits).toBe(20_400);
+
+      const k = await createApiKey(id, "k", "TEST");
+      await admin.setBlocked("boss@x.com", id, true, "abuse");
+      const r = await call(getAccount, k.ok ? k.key : "", undefined, "GET");
+      expect(r.status).toBe(403);
+      expect((await r.json()).error.code).toBe("account_blocked");
+      await admin.setBlocked("boss@x.com", id, false);
+      expect((await call(getAccount, k.ok ? k.key : "", undefined, "GET")).status).toBe(200);
+      expect((await admin.revokeAllKeys("boss@x.com", id)).count).toBe(1);
+
+      const order = await createOrder(id, resolveItem({ pack: "pack-1k" })!);
+      expect((await admin.markOrderPaid("boss@x.com", order.id)).ok).toBe(true);
+      expect((await admin.markOrderPaid("boss@x.com", order.id)).ok).toBe(false);
+      const order2 = await createOrder(id, resolveItem({ pack: "pack-1k" })!);
+      expect((await admin.cancelOrder("boss@x.com", order2.id)).ok).toBe(true);
+      expect((await db.account.findUniqueOrThrow({ where: { id } })).credits).toBe(21_400);
+
+      expect(await db.adminLog.count({ where: { accountId: id } })).toBe(8);
+      const stats = await admin.adminStats();
+      expect(stats.customers).toBeGreaterThan(0);
+    } finally {
+      await db.adminLog.deleteMany({ where: { accountId: id } });
+      await db.user.delete({ where: { id: u.id } });
+    }
+  });
+
+  it("first confirmed user becomes admin; admins can't remove the last admin", async () => {
+    if (!dbUp) return;
+    const { isAdmin } = await import("@/lib/auth");
+    const admin = await import("@/server/services/admin.service");
+    const existing = await db.user.findMany({ where: { isAdmin: true }, select: { id: true } });
+    await db.user.updateMany({ where: { isAdmin: true }, data: { isAdmin: false } });
+    try {
+      const all = await db.user.findMany({ where: { emailVerifiedAt: { not: null } }, orderBy: { createdAt: "asc" } });
+      if (all.length < 2) return;
+      expect(await isAdmin(all[1])).toBe(false); // not the first
+      expect(await isAdmin(all[0])).toBe(true); // first confirmed → promoted
+      expect(await isAdmin({ ...all[1], isAdmin: false })).toBe(false); // an admin exists now
+      expect((await admin.setUserAdmin("x", all[0].id, false)).ok).toBe(false);
+      expect((await admin.setUserAdmin("x", all[1].id, true)).ok).toBe(true);
+      expect((await admin.setUserAdmin("x", all[1].id, false)).ok).toBe(true);
+    } finally {
+      await db.user.updateMany({ where: { isAdmin: true }, data: { isAdmin: false } });
+      if (existing.length) await db.user.updateMany({ where: { id: { in: existing.map((e) => e.id) } }, data: { isAdmin: true } });
+    }
+  });
+});

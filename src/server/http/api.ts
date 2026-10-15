@@ -49,6 +49,7 @@ export function withApiKey(handler: (req: NextRequest, ctx: ApiContext, params: 
       if (!token) throw new ApiError(401, "missing_api_key", "Send your API key in the Authorization header: Bearer wk_live_…");
       const key = await findApiKey(token);
       if (!key) throw new ApiError(401, "invalid_api_key", "This API key is invalid or was revoked.");
+      if (key.account.blockedAt) throw new ApiError(403, "account_blocked", "This account is suspended. Contact support.");
       const params = (await routeCtx?.params) ?? {};
       const data = await handler(req, { key, account: key.account, test: key.mode === "TEST" }, params);
       return data instanceof Response ? data : NextResponse.json(data);
