@@ -5,7 +5,9 @@ import { PrismaPg } from "@prisma/adapter-pg";
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 
 function createClient() {
-  const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL! });
+  // Neon URLs use sslmode=require; pg treats it as verify-full anyway — say so explicitly to silence its warning
+  const url = (process.env.DATABASE_URL ?? "").replace(/sslmode=(prefer|require|verify-ca)\b/, "sslmode=verify-full");
+  const adapter = new PrismaPg({ connectionString: url });
   return new PrismaClient({ adapter, log: ["warn", "error"] });
 }
 

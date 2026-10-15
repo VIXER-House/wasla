@@ -18,10 +18,13 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ acco
 }
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ accountId: string }> }) {
-  const account = await db.account.findUnique({ where: { id: (await params).accountId } });
+  const accountId = (await params).accountId;
+  const account = await db.account.findUnique({ where: { id: accountId } });
+  console.log(`[wa-webhook] POST from Meta for account ${accountId} (found: ${!!account})`);
   if (!account) return new NextResponse("Not found", { status: 404 });
   const raw = await req.text();
   if (account.waAppSecretEnc && !verifyMetaSignature(raw, req.headers.get("x-hub-signature-256"), decrypt(account.waAppSecretEnc))) {
+    console.warn("[wa-webhook] REJECTED: bad signature — App secret in Dashboard → WhatsApp doesn't match Meta's App secret");
     // Make the problem visible in the customer's Usage page instead of failing silently
     await recordUsage({ accountId: account.id, kind: "MESSAGE_RECEIVED", mode: "LIVE", ok: false, detail: "Webhook from Meta rejected: signature doesn't match the App secret saved in Dashboard → WhatsApp" });
     return new NextResponse("Bad signature", { status: 403 });
@@ -34,8 +37,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ acc
   }
   const { messages } = parseMetaWebhook(payload);
   const fwd = await forwardInbound(account, payload);
+  console.log(`[wa-webhook] ${messages.length} message(s); forward to ${account.webhookUrl ?? "(no webhook URL set)"} →`, JSON.stringify(fwd));
+  const why = fwd.forwarded ? "" : ` (not forwarded: ${"status" in fwd && fwd.status ? `your webhook answered HTTP ${fwd.status}` : "error" in fwd && fwd.error ? fwd.error : "webhook URL/secret not set"})`;
   for (const m of messages) {
-    await recordUsage({ accountId: account.id, kind: "MESSAGE_RECEIVED", mode: "LIVE", ok: fwd.forwarded, detail: `from ${m.from}${fwd.forwarded ? "" : " (not forwarded — check your webhook URL)"}` });
+    await recordUsage({ accountId: account.id, kind: "MESSAGE_RECEIVED", mode: "LIVE", ok: fwd.forwarded, detail: `from ${m.from}${why}` });
   }
   // Always 200 quickly so Meta doesn't retry
   return NextResponse.json({ ok: true });
