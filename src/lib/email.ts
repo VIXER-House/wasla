@@ -21,6 +21,32 @@ function layout(title: string, body: string, cta: { label: string; url: string }
 </table></td></tr></table></body></html>`;
 }
 
+/**
+ * Resend rejects most mistakes with 4xx — those are setup problems (key, sender domain), not the
+ * visitor's fault, and retrying won't help. Say what to fix instead of "try again".
+ */
+function explainResendError(status: number, body: string): string {
+  let msg = "";
+  try {
+    msg = String(JSON.parse(body)?.message ?? "");
+  } catch {
+    /* not JSON */
+  }
+  const m = msg.toLowerCase();
+  const from = getConfig().EMAIL_FROM;
+  if (m.includes("domain is not verified") || m.includes("not verified"))
+    return `Email setup: the sender domain in EMAIL_FROM (${from}) isn't verified in Resend. Verify it under Resend → Domains, or use a sender on a verified domain.`;
+  if (m.includes("testing emails") || m.includes("own email"))
+    return "Email setup: Resend's test sender (onboarding@resend.dev) can only email the address that owns the Resend account. Verify your own domain in Resend and set EMAIL_FROM to an address on it.";
+  if (status === 401 || status === 403 && m.includes("api key"))
+    return "Email setup: RESEND_API_KEY is missing or invalid. Create a new key in Resend → API Keys.";
+  if (status === 422 && m.includes("from"))
+    return `Email setup: EMAIL_FROM (${from}) isn't valid. Use the form "Wasla <no-reply@yourdomain.com>".`;
+  if (status === 429) return "Too many emails right now. Please try again in a minute.";
+  if (status >= 400 && status < 500) return `Email setup problem (Resend ${status}${msg ? `: ${msg.slice(0, 160)}` : ""}).`;
+  return "We couldn't send the email. Please try again in a minute.";
+}
+
 async function send(to: string, subject: string, html: string, text: string, link: string): Promise<EmailResult> {
   const cfg = getConfig();
   if (cfg.EMAIL_DEV_LINKS) {
@@ -41,7 +67,7 @@ async function send(to: string, subject: string, html: string, text: string, lin
     if (!res.ok) {
       const detail = await res.text();
       console.error("[email] Resend error", res.status, detail.slice(0, 300));
-      return { sent: false, error: "We couldn't send the email. Please try again in a minute." };
+      return { sent: false, error: explainResendError(res.status, detail) };
     }
     return { sent: true };
   } catch (e) {
