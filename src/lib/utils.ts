@@ -13,8 +13,8 @@ export function formatEgp(n: number) {
   return `${new Intl.NumberFormat("en-US").format(n)} EGP`;
 }
 
-export function formatDate(d: Date | string, withTime = false) {
-  return new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", year: "numeric", ...(withTime ? { hour: "2-digit", minute: "2-digit" } : {}) }).format(new Date(d));
+export function formatDate(d: Date | string, withTime: boolean | "seconds" = false) {
+  return new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", year: "numeric", ...(withTime ? { hour: "2-digit", minute: "2-digit", ...(withTime === "seconds" ? { second: "2-digit" } : {}) } : {}) }).format(new Date(d));
 }
 
 export function relativeTime(d: Date | string) {

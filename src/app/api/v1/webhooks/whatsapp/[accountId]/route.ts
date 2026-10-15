@@ -1,4 +1,4 @@
-import { NextResponse, type NextRequest } from "next/server";
+import { after, NextResponse, type NextRequest } from "next/server";
 import { verifyMetaChallenge, verifyMetaSignature, parseMetaWebhook } from "@vixer-house/whatsapp-kit";
 import { db } from "@/lib/db";
 import { decrypt } from "@/lib/crypto";
@@ -36,12 +36,26 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ acc
     return new NextResponse("Bad JSON", { status: 400 });
   }
   const { messages } = parseMetaWebhook(payload);
-  const fwd = await forwardInbound(account, payload);
-  console.log(`[wa-webhook] ${messages.length} message(s); forward to ${account.webhookUrl ?? "(no webhook URL set)"} →`, JSON.stringify(fwd));
-  const why = fwd.forwarded ? "" : ` (not forwarded: ${"status" in fwd && fwd.status ? `your webhook answered HTTP ${fwd.status}` : "error" in fwd && fwd.error ? fwd.error : "webhook URL/secret not set"})`;
-  for (const m of messages) {
-    await recordUsage({ accountId: account.id, kind: "MESSAGE_RECEIVED", mode: "LIVE", ok: fwd.forwarded, detail: `from ${m.from}${why}` });
-  }
-  // Always 200 quickly so Meta doesn't retry
+  const receivedAt = Date.now();
+  // Answer Meta right away (slow or failing answers make Meta delay and retry deliveries);
+  // forwarding and usage logging run after the response.
+  after(async () => {
+    const started = Date.now();
+    const fwd = await forwardInbound(account, payload);
+    const forwardMs = Date.now() - started;
+    console.log(`[wa-webhook] ${messages.length} message(s); forward to ${account.webhookUrl ?? "(no webhook URL set)"} in ${forwardMs}ms →`, JSON.stringify(fwd));
+    const why = fwd.forwarded ? "" : ` (not forwarded: ${"status" in fwd && fwd.status ? `your webhook answered HTTP ${fwd.status}` : "error" in fwd && fwd.error ? fwd.error : "webhook URL/secret not set"})`;
+    for (const m of messages) {
+      const lateS = Math.max(0, Math.round((receivedAt - m.timestamp.getTime()) / 1000));
+      console.log(`[wa-webhook] message from ${m.from} sent at ${m.timestamp.toISOString()} reached Wasla after ${lateS}s`);
+      await recordUsage({
+        accountId: account.id,
+        kind: "MESSAGE_RECEIVED",
+        mode: "LIVE",
+        ok: fwd.forwarded,
+        detail: `from ${m.from} · Meta delivered after ${lateS}s · forwarded in ${(forwardMs / 1000).toFixed(1)}s${why}`,
+      });
+    }
+  });
   return NextResponse.json({ ok: true });
 }

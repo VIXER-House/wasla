@@ -67,7 +67,7 @@ export default async function UsagePage({ searchParams }: { searchParams: Promis
               <tbody className="divide-y divide-ink-100">
                 {events.map((e) => (
                   <tr key={e.id}>
-                    <td className="whitespace-nowrap px-5 py-2.5 text-ink-500">{formatDate(e.createdAt, true)}</td>
+                    <td className="whitespace-nowrap px-5 py-2.5 text-ink-500">{formatDate(e.createdAt, "seconds")}</td>
                     <td className="whitespace-nowrap px-5 py-2.5">
                       {KIND_LABEL[e.kind]} {e.mode === "TEST" && <Badge tone="amber">test</Badge>} {!e.ok && <Badge tone="red">failed</Badge>}
                     </td>
